@@ -10,7 +10,7 @@ set -o pipefail
 . /libbitnami.sh
 . /libcassandra.sh
 
-# Load Redis environment variables
+# Load Cassandra environment variables
 eval "$(cassandra_env)"
 
 print_welcome_page
