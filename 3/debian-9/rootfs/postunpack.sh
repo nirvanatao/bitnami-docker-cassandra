@@ -6,7 +6,7 @@
 . /libfs.sh
 . /libcassandra.sh
 
-# Load PostgreSQL environment variables
+# Load Cassandra environment variables
 eval "$(cassandra_env)"
 
 for dir in "$CASSANDRA_INITSCRIPTS_DIR" "$CASSANDRA_TMP_DIR" "$CASSANDRA_HISTORY_DIR" "$CASSANDRA_CONF_DIR" "$CASSANDRA_LOG_DIR" "$CASSANDRA_MOUNTED_CONF_DIR" "$CASSANDRA_VOLUME_DIR"; do
