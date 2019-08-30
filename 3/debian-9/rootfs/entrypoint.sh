@@ -18,7 +18,6 @@ print_welcome_page
 if [[ "$*" = *"/run.sh"* ]]; then
     info "** Starting Cassandra setup **"
     /setup.sh
-    touch "$CASSANDRA_TMP_DIR"/.initialized
     info "** Cassandra setup finished! **"
 fi
 

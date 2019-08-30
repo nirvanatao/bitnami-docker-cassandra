@@ -11,6 +11,7 @@
 . /libservice.sh
 . /libvalidations.sh
 . /libnet.sh
+. /libfs.sh
 
 ########################
 # Load global variables used on Cassandra configuration.
@@ -139,7 +140,7 @@ cassandra_yaml_set() {
     local -r value="${2:?missing value}"
     local -r use_quotes="${3:-yes}"
     local -r conf_file="${4:-$CASSANDRA_CONF_FILE}"
-    if is_boolean_yes "$use_quotes";then
+    if is_boolean_yes "$use_quotes"; then
         sed -i -r "s?^(#\s)\?(\s*)(\-\s*)\?${property}:.*?\2\3${property}: '${value}'?g" "$conf_file"
     else
         sed -i -r "s?^(#\s)\?(\s*)(\-\s*)\?${property}:.*?\2\3${property}: ${value}?g" "$conf_file"
@@ -166,7 +167,7 @@ cassandra_yaml_set_as_array() {
     local substitution="\2${property}:"
 
     for value in ${array[@]}; do
-        if is_boolean_yes "$use_quotes";then
+        if is_boolean_yes "$use_quotes"; then
             substitution+="\n\2  - '${value}'"
         else
             substitution+="\n\2  - ${value}"
@@ -197,28 +198,35 @@ cassandra_validate() {
     }
 
     check_yes_no_value() {
-        if ! [[ "${!1}" == "yes" || "${!1}" == "no" ]];then
+        if ! [[ "${!1}" == "yes" || "${!1}" == "no" ]]; then
             error "The allowed values for $1 are [yes, no]"
             exit 1
         fi
     }
 
     check_true_false_value() {
-        if ! [[ "${!1}" == "true" || "${!1}" == "false" ]];then
+        if ! [[ "${!1}" == "true" || "${!1}" == "false" ]]; then
             error "The allowed values for $1 are [true, false]"
             exit 1
         fi
     }
 
-    check_conflicting_port() {
-        if [[ "${!1}" == "${!2}" ]]; then
-            error "$1 and $2 are bound to the same port"
-            exit 1
-        fi
+    check_conflicting_ports() {
+        local -r total="$#"
+        for i in $(seq 1 "$((total - 1))"); do
+            for j in $(seq "$((i + 1))" "$total"); do
+                i_aux="${!i}"
+                j_aux="${!j}"
+                if [[ "${!i_aux}" == "${!j_aux}" ]]; then
+                    echo "${!i} and ${!j} are bound to the same port"
+                    exit 1
+                fi
+            done
+        done
     }
 
     check_allowed_port() {
-        if (( ${!1} <= 1024 ));then
+        if (( ${!1} <= 1024 )); then
             error "Port $1 must be bound to a number greater than 1024"
             exit 1
         fi
@@ -231,7 +239,7 @@ cassandra_validate() {
     }
 
     check_positive_value() {
-        if (( ${!1} < 0 ));then
+        if (( ${!1} < 0 )); then
             error "The variable $1 must be positive integer"
             exit 1
         fi
@@ -282,19 +290,17 @@ cassandra_validate() {
     check_positive_value CASSANDRA_JMX_PORT_NUMBER
     check_positive_value CASSANDRA_TRANSPORT_PORT_NUMBER
 
-    check_conflicting_port CASSANDRA_CQL_PORT_NUMBER CASSANDRA_JMX_PORT_NUMBER
-    check_conflicting_port CASSANDRA_CQL_PORT_NUMBER CASSANDRA_TRANSPORT_PORT_NUMBER
-    check_conflicting_port CASSANDRA_JMX_PORT_NUMBER CASSANDRA_TRANSPORT_PORT_NUMBER
+    check_conflicting_ports CASSANDRA_CQL_PORT_NUMBER CASSANDRA_JMX_PORT_NUMBER CASSANDRA_TRANSPORT_PORT_NUMBER
 
     check_allowed_port CASSANDRA_CQL_PORT_NUMBER
     check_allowed_port CASSANDRA_TRANSPORT_PORT_NUMBER
     check_allowed_port CASSANDRA_JMX_PORT_NUMBER
 
     check_resolved_hostname "$CASSANDRA_HOST"
-    for peer in ${CASSANDRA_PEERS//,/ };do
+    for peer in ${CASSANDRA_PEERS//,/ }; do
         check_resolved_hostname "$peer"
     done
-    for seed in ${CASSANDRA_SEEDS//,/ };do
+    for seed in ${CASSANDRA_SEEDS//,/ }; do
         check_resolved_hostname "$seed"
     done
 
@@ -332,7 +338,7 @@ cassandra_is_file_external() {
 #   None
 #########################
 cassandra_copy_mounted_config() {
-    if [[ -d "$CASSANDRA_MOUNTED_CONF_DIR" ]] && compgen -G "$CASSANDRA_MOUNTED_CONF_DIR"/* > /dev/null; then
+    if ! is_dir_empty "$CASSANDRA_MOUNTED_CONF_DIR"; then
         cp -r "$CASSANDRA_MOUNTED_CONF_DIR"/* "$CASSANDRA_CONF_DIR"
     fi
 }
@@ -361,6 +367,7 @@ cassandra_copy_default_config() {
             cp "$f" "$dest"
         fi
     done < $tmp_file_list
+    rm "$tmp_file_list"
 }
 
 ########################
@@ -459,7 +466,7 @@ cassandra_setup_cluster() {
         debug "cassandra.yaml mounted. Skipping cluster configuration"
     fi
 
-    # cassandranv.sh changes
+    # cassandra-env.sh changes
     if ! cassandra_is_file_external "cassandra-env.sh"; then
         sed -i -r "s?#\s*JVM_OPTS=\"\$JVM_OPTS -Djava[.]rmi[.]server[.]hostname=[^\"]*?JVM_OPTS=\"\$JVM_OPTS -Djava.rmi.server.hostname=${host}?g" "$CASSANDRA_CONF_DIR"/cassandra-env.sh
     else
@@ -508,18 +515,12 @@ cassandra_change_cassandra_password() {
 
     local passwordChanged=no
 
-    if (echo "ALTER USER cassandra WITH PASSWORD \$\$${escaped_password}\$\$;" | cassandra_execute_with_retries "$retries" "$sleep_time" "$user" "$old_password");then
+    if (echo "ALTER USER cassandra WITH PASSWORD \$\$${escaped_password}\$\$;" | cassandra_execute_with_retries "$retries" "$sleep_time" "$user" "$old_password"); then
         debug "ALTER USER command executed. Trying to log in"
-        if (echo "DESCRIBE KEYSPACES" | cassandra_execute_with_retries "$CASSANDRA_CQL_MAX_RETRIES" "$sleep_time" "$user" "$CASSANDRA_PASSWORD");then
-            info "Password updated successfully"
-            passwordChanged=yes
-        fi
+        wait_for_cql_access "$user" "$new_password" "" "$retries" "$sleep_time"
+        info "Password updated successfully"
     fi
 
-    if ! is_boolean_yes "$passwordChanged";then
-        error "Failed to update password"
-        exit 1
-    fi
 }
 
 ########################
@@ -638,15 +639,15 @@ cassandra_initialize() {
         am_i_root && chown -R "$CASSANDRA_DAEMON_USER:$CASSANDRA_DAEMON_GROUP" "$dir"
     done
 
-    if ! is_dir_empty "$CASSANDRA_DATA_DIR";then
+    if ! is_dir_empty "$CASSANDRA_DATA_DIR"; then
         info "Deploying Cassandra with persisted data"
     else
         info "Deploying Cassandra from scratch"
         cassandra_start_bg "$CASSANDRA_FIRST_BOOT_LOG_FILE"
-        if is_boolean_yes "$CASSANDRA_PASSWORD_SEEDER";then
+        if is_boolean_yes "$CASSANDRA_PASSWORD_SEEDER"; then
             info "Password seeder node"
             # Check that all peers are ready
-            for peer in ${CASSANDRA_PEERS//,/ };do
+            for peer in ${CASSANDRA_PEERS//,/ }; do
                 wait_for_cql_access "cassandra" "cassandra" "$peer" "$CASSANDRA_PEER_CQL_MAX_RETRIES" "$CASSANDRA_PEER_CQL_SLEEP_TIME"
             done
             # Setup user
@@ -674,7 +675,7 @@ cassandra_initialize() {
 #   None
 #########################
 cassandra_execute_startup_cql() {
-    if [[ -n "$CASSANDRA_STARTUP_CQL" ]];then
+    if [[ -n "$CASSANDRA_STARTUP_CQL" ]]; then
         info "Executing Startup CQL"
         if ! (echo "$CASSANDRA_STARTUP_CQL" | cassandra_execute_with_retries "$CASSANDRA_CQL_MAX_RETRIES" "$CASSANDRA_CQL_SLEEP_TIME" "$CASSANDRA_USER" "$CASSANDRA_PASSWORD"); then
             error "Failed executing startup CQL command"
@@ -788,14 +789,14 @@ cassandra_execute_with_retries() {
     # Get command from stdin as we will retry it several times
     local -r command=$(cat)
 
-    for i in $(seq 1 $retries);do
-        if (echo "$command" | cassandra_execute "$user" "$pass" "$keyspace" "$host" "$extra_args");then
+    for i in $(seq 1 $retries); do
+        if (echo "$command" | cassandra_execute "$user" "$pass" "$keyspace" "$host" "$extra_args"); then
             success=yes
             break;
         fi
         sleep "$sleep_time"
     done
-    if is_boolean_yes "$success";then
+    if is_boolean_yes "$success"; then
         true
     else
         error "CQL command failed $retries times"
@@ -831,7 +832,7 @@ wait_for_nodetool_up() {
     fi
 
     local success=no
-    for i in $(seq 1 $retries);do
+    for i in $(seq 1 $retries); do
         if "${check_cmd[@]}" "${check_args[@]}" 2>&1 | grep -E "$check_regex" > "$output"; then
             info "Nodetool reported the successful startup of Cassandra"
             success=yes
@@ -840,7 +841,7 @@ wait_for_nodetool_up() {
         sleep "$sleep_time"
     done
 
-    if is_boolean_yes "$success";then
+    if is_boolean_yes "$success"; then
         true
     else
         error "Cassandra failed to start up"
@@ -881,7 +882,7 @@ wait_for_cql_log_entry() {
     fi
 
     local success=no
-    for i in $(seq 1 $retries);do
+    for i in $(seq 1 $retries); do
         if "${check_cmd[@]}" "${check_args[@]}" | grep -E "$check_regex" > "$output"; then
             info "Found CQL startup log line"
             success=yes
@@ -890,7 +891,7 @@ wait_for_cql_log_entry() {
         sleep "$sleep_time"
     done
 
-    if is_boolean_yes "$success";then
+    if is_boolean_yes "$success"; then
         true
     else
         error "Cassandra failed to start up"
@@ -922,11 +923,11 @@ wait_for_cql_access() {
     local -r max_retries=${4:-$CASSANDRA_CQL_MAX_RETRIES}
     local -r sleep_time=${5:-$CASSANDRA_CQL_SLEEP_TIME}
 
-    info "Waiting for CQL server @ $host"
-    if (echo "DESCRIBE KEYSPACES" | cassandra_execute_with_retries "$max_retries" "$sleep_time" "$user" "$password" "" "$host" );then
-        info "CQL server is ready"
+    info "Trying to access CQL server @ $host"
+    if (echo "DESCRIBE KEYSPACES" | cassandra_execute_with_retries "$max_retries" "$sleep_time" "$user" "$password" "" "$host" ); then
+        info "Accessed CQL server successfully"
     else
-        error "CQL not ready"
+        error "Could not access CQL server"
         exit 1
     fi
 }

@@ -10,11 +10,7 @@ set -o nounset
 set -o pipefail
 
 # Load Generic Libraries
-. /libfile.sh
-. /liblog.sh
-. /libservice.sh
 . /libvalidations.sh
-. /libfs.sh
 . /libos.sh
 . /libcassandra.sh
 

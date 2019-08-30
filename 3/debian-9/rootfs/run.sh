@@ -15,17 +15,20 @@ set -o pipefail
 eval "$(cassandra_env)"
 
 # As we cannot use "local" we will use "readonly" for read-only variables.
-# As the scope is global, we attach "__run_" to avoid conflicts with
-# variables in libcassandra.sh
+# The scope of "readonly" is global, so we attach "__run_" to avoid conflicts 
+# with other variables in libcassandra.sh
 
 info "** Starting Cassandra **"
 
-# During the startup logic, we bootstap Cassandra. For cluster consistency 
-# reasons we prefer keeping it running instead of stopping and launching it
-# again. So, we first check if Cassandra was already running in one of the two
-# cases:
+# During the startup logic, we bootstap Cassandra. This is because Cassandra seeder nodes
+# need to be able to connect to each other, and after that authentication can be configured.
+# However, some applications may detect at this point that the database is ready.
+# While in other bitnami containers we would stop the database and run it in foreground,
+# we prefer keeping it running in this case.
+# So, in this run.sh script, we first check if Cassandra was already running in 
+# one of the two cases:
 #
-#  1) Initial cluster initilazation
+#  1) Initial cluster initialization
 #  2) Init scripts
 #
 # If none of the two cases apply, we assume it is an error and exit
