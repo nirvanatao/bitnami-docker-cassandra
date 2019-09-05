@@ -833,18 +833,8 @@ wait_for_nodetool_up() {
         output="/dev/stdout"
     fi
 
-    local success=no
-    for i in $(seq 1 $retries); do
-        if "${check_cmd[@]}" "${check_args[@]}" 2>&1 | grep -E "$check_regex" > "$output"; then
-            info "Nodetool reported the successful startup of Cassandra"
-            success=yes
-            break
-        fi
-        sleep "$sleep_time"
-    done
-
-    if is_boolean_yes "$success"; then
-        true
+    if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
+        info "Nodetool reported the successful startup of Cassandra"
     else
         error "Cassandra failed to start up"
         if [[ "$BITNAMI_DEBUG" = "true" ]]; then
@@ -883,18 +873,8 @@ wait_for_cql_log_entry() {
         output="/dev/stdout"
     fi
 
-    local success=no
-    for i in $(seq 1 $retries); do
-        if "${check_cmd[@]}" "${check_args[@]}" | grep -E "$check_regex" > "$output"; then
-            info "Found CQL startup log line"
-            success=yes
-            break
-        fi
-        sleep "$sleep_time"
-    done
-
-    if is_boolean_yes "$success"; then
-        true
+    if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
+        info "Found CQL startup log line"
     else
         error "Cassandra failed to start up"
         if [[ "$BITNAMI_DEBUG" = "true" ]]; then
