@@ -504,8 +504,7 @@ $ docker-compose up cassandra
 
 ## 3.11.4-debian-9-r181 and 3.11.4-ol-7-r194
 
-- Decrease the size of the container. Cassandra configuration moved to bash scripts in the rootfs/ folder.
-- This container is backwards compatible with the previous versions, as the mount folders remain unchanged.
+- Decrease the size of the container. The configuration logic is now based on Bash scripts in the `rootfs/` folder.
 
 ## 3.11.3-r129
 
