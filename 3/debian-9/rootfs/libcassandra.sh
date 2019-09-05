@@ -24,6 +24,7 @@
 cassandra_env() {
     cat <<"EOF"
 # Bitnami debug
+export MODULE=cassandra
 export BITNAMI_DEBUG="${BITNAMI_DEBUG:-false}"
 
 # Paths
@@ -196,14 +197,14 @@ cassandra_validate() {
     }
 
     check_yes_no_value() {
-        if ! [[ "${!1}" = "yes" || "${!1}" = "no" ]]; then
+        if ! is_yes_no_value "${!1}"; then
             error "The allowed values for $1 are [yes, no]"
             exit 1
         fi
     }
 
     check_true_false_value() {
-        if ! [[ "${!1}" = "true" || "${!1}" = "false" ]]; then
+        if ! is_true_false_value "${!1}"; then
             error "The allowed values for $1 are [true, false]"
             exit 1
         fi
@@ -233,20 +234,20 @@ cassandra_validate() {
     }
 
     check_resolved_hostname() {
-        if ! dns_lookup "$1" > /dev/null; then
+        if ! is_hostname_resolved "$1"; then
             warn "Hostname $1 could not be resolved. This could lead to connection isssues"
         fi
     }
 
     check_positive_value() {
-        if ! is_int "${!1:-}" || (( ${!1:-} < 0 )); then
+        if ! is_positive_int "${!1}"; then
             error "The variable $1 must be positive integer"
             exit 1
         fi
     }
 
     check_empty_value() {
-        if [[ -z "${!1:-}" ]]; then
+        if is_empty_value "${!1}"; then
             error "The $1 environment variable is empty or not set."
             exit 1
         fi
@@ -520,7 +521,6 @@ cassandra_change_cassandra_password() {
         wait_for_cql_access "$user" "$new_password" "" "$retries" "$sleep_time"
         info "Password updated successfully"
     fi
-
 }
 
 ########################
@@ -835,6 +835,7 @@ wait_for_nodetool_up() {
 
     if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
         info "Nodetool reported the successful startup of Cassandra"
+        true
     else
         error "Cassandra failed to start up"
         if [[ "$BITNAMI_DEBUG" = "true" ]]; then
@@ -875,6 +876,7 @@ wait_for_cql_log_entry() {
 
     if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
         info "Found CQL startup log line"
+        true
     else
         error "Cassandra failed to start up"
         if [[ "$BITNAMI_DEBUG" = "true" ]]; then
