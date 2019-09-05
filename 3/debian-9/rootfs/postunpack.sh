@@ -15,12 +15,12 @@ done
 chmod -R g+rwX "$CASSANDRA_INITSCRIPTS_DIR" "$CASSANDRA_MOUNTED_CONF_DIR" "$CASSANDRA_TMP_DIR" "$CASSANDRA_HISTORY_DIR" "$CASSANDRA_CONF_DIR" "$CASSANDRA_LOG_DIR" "$CASSANDRA_VOLUME_DIR"
 
 # Create wrapper for cqlsh
-cat << EOF > "$CASSANDRA_BIN_DIR/cqlsh"
+cat << EOF > "${CASSANDRA_BIN_DIR}/cqlsh"
 #!/bin/sh
-exec "$PYTHON_BIN_DIR/python" "$CASSANDRA_BIN_DIR/cqlsh.py" "\$@"
+exec "${PYTHON_BIN_DIR}/python" "${CASSANDRA_BIN_DIR}/cqlsh.py" "\$@"
 EOF
 
-chmod +x "$CASSANDRA_BIN_DIR/cqlsh"
+chmod +x "${CASSANDRA_BIN_DIR}/cqlsh"
 
 # For backwards compatibility with the bitnami/cassandra 
 # chart v3.x.x we create a link named like the old entrypoint

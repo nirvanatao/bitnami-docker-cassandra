@@ -49,7 +49,7 @@ if is_cassandra_running; then
 
     info "Tailing $running_log_file"
     readonly __run_tail_cmd="$(which tail)"
-    readonly __run_tail_flags=("--pid=$__run_pid" "-n" "1000" "-f" "$running_log_file")
+    readonly __run_tail_flags=("--pid=${__run_pid}" "-n" "1000" "-f" "$running_log_file")
 
     if am_i_root; then
         exec gosu "$CASSANDRA_DAEMON_USER" "${__run_tail_cmd}" "${__run_tail_flags[@]}"
@@ -57,7 +57,7 @@ if is_cassandra_running; then
         exec "${__run_tail_cmd}" "${__run_tail_flags[@]}"
     fi
 else
-    readonly __run_cmd="$CASSANDRA_BIN_DIR/cassandra"
+    readonly __run_cmd="${CASSANDRA_BIN_DIR}/cassandra"
     readonly __run_flags=("-p $CASSANDRA_PID_FILE" "-R" "-f")
     if am_i_root; then
         exec gosu "$CASSANDRA_DAEMON_USER" "${__run_cmd}" "${__run_flags[@]}"
