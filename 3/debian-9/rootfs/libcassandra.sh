@@ -823,17 +823,19 @@ wait_for_nodetool_up() {
 
     debug "Checking status with nodetool"
 
-    local -r check_cmd=("${CASSANDRA_BIN_DIR}/nodetool")
-    local -r check_args=("status" "--port" "$CASSANDRA_JMX_PORT_NUMBER")
-    local -r machine_ip="$(dns_lookup "$CASSANDRA_HOST")"
-    local -r check_regex="UN\s*(${CASSANDRA_HOST}|${machine_ip}|127.0.0.1)"
+    check_function_nodetool() {
+        local -r check_cmd=("${CASSANDRA_BIN_DIR}/nodetool")
+        local -r check_args=("status" "--port" "$CASSANDRA_JMX_PORT_NUMBER")
+        local -r machine_ip="$(dns_lookup "$CASSANDRA_HOST")"
+        local -r check_regex="UN\s*(${CASSANDRA_HOST}|${machine_ip}|127.0.0.1)"
+        local output="/dev/null"
+        if [[ "$BITNAMI_DEBUG" = "true" ]]; then
+            output="/dev/stdout"
+        fi
+        "${check_cmd[@]}" "${check_args[@]}" | grep -E "${check_regex}" > "${output}"
+    }
 
-    local output="/dev/null"
-    if [[ "$BITNAMI_DEBUG" = "true" ]]; then
-        output="/dev/stdout"
-    fi
-
-    if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
+    if retry_while check_function_nodetool "$retries" "$sleep_time"; then
         info "Nodetool reported the successful startup of Cassandra"
         true
     else
@@ -865,18 +867,20 @@ wait_for_cql_log_entry() {
 
     debug "Checking that log $logger contains entry \"Starting listening for CQL clients\""
 
-    local -r check_cmd=("cat")
-    local -r check_args=("$logger")
-    local -r check_regex="Starting listening for CQL clients"
+    check_function_log_entry() {
+        local -r check_cmd=("cat")
+        local -r check_args=("$logger")
+        local -r check_regex="Starting listening for CQL clients"
 
-    local output="/dev/null"
-    if [[ "$BITNAMI_DEBUG" = "true" ]]; then
-        output="/dev/stdout"
-    fi
+        local output="/dev/null"
+        if [[ "$BITNAMI_DEBUG" = "true" ]]; then
+            output="/dev/stdout"
+        fi
+        "${check_cmd[@]}" "${check_args[@]}" | grep -E "${check_regex}" > "${output}"
+    }
 
-    if retry_while "${check_cmd[@]} ${check_args[@]} | grep -E \"${check_regex}\" > ${output}" "$retries" "$sleep_time"; then
+    if retry_while check_function_log_entry "$retries" "$sleep_time"; then
         info "Found CQL startup log line"
-        true
     else
         error "Cassandra failed to start up"
         if [[ "$BITNAMI_DEBUG" = "true" ]]; then
