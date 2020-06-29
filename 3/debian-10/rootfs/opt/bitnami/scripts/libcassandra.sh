@@ -62,6 +62,7 @@ export CASSANDRA_CLUSTER_NAME="${CASSANDRA_CLUSTER_NAME:-My Cluster}"
 export CASSANDRA_DATACENTER="${CASSANDRA_DATACENTER:-dc1}"
 export CASSANDRA_ENABLE_REMOTE_CONNECTIONS="${CASSANDRA_ENABLE_REMOTE_CONNECTIONS:-true}"
 export CASSANDRA_ENABLE_RPC="${CASSANDRA_ENABLE_RPC:-true}"
+export FORCE_LISTEN_ON_LOCAL="${FORCE_LISTEN_ON_LOCAL:-true}"
 export CASSANDRA_ENABLE_USER_DEFINED_FUNCTIONS="${CASSANDRA_ENABLE_USER_DEFINED_FUNCTIONS:-false}"
 export CASSANDRA_ENDPOINT_SNITCH="${CASSANDRA_ENDPOINT_SNITCH:-SimpleSnitch}"
 export CASSANDRA_HOST="${CASSANDRA_HOST:-$(hostname)}"
@@ -71,6 +72,7 @@ export CASSANDRA_PASSWORD_SEEDER="${CASSANDRA_PASSWORD_SEEDER:-no}"
 export CASSANDRA_SEEDS="${CASSANDRA_SEEDS:-$CASSANDRA_HOST}"
 export CASSANDRA_PEERS="${CASSANDRA_PEERS:-$CASSANDRA_SEEDS}"
 export CASSANDRA_RACK="${CASSANDRA_RACK:-rack1}"
+export CASSANDRA_BROADCAST_ADDRESS="${CASSANDRA_BROADCAST_ADDRESS:-}"
 
 # Startup CQL and init-db settings
 export CASSANDRA_STARTUP_CQL="${CASSANDRA_STARTUP_CQL:-}"
@@ -441,16 +443,23 @@ cassandra_setup_cluster() {
     local host="127.0.0.1"
     local rpc_address="127.0.0.1"
     local cassandra_config
+    local listen_address="127.0.0.1"
 
     if [[ "$CASSANDRA_ENABLE_REMOTE_CONNECTIONS" = "true" ]]; then
         host="$CASSANDRA_HOST"
+        listen_address="$CASSANDRA_HOST"
         rpc_address="0.0.0.0"
     fi
+
+    if [[ "$FORCE_LISTEN_ON_LOCAL" = "true" ]]; then
+        listen_address="127.0.0.1"
+    fi
+
     # cassandra.yaml changes
     if ! cassandra_is_file_external "cassandra.yaml"; then
         cassandra_yaml_set "num_tokens" "$CASSANDRA_NUM_TOKENS" "no"
         cassandra_yaml_set "cluster_name" "$CASSANDRA_CLUSTER_NAME"
-        cassandra_yaml_set "listen_address" "$host"
+        cassandra_yaml_set "listen_address" "$listen_address"
         cassandra_yaml_set "seeds" "$CASSANDRA_SEEDS"
         cassandra_yaml_set "start_rpc" "$CASSANDRA_ENABLE_RPC" "no"
         cassandra_yaml_set "enable_user_defined_functions" "$CASSANDRA_ENABLE_USER_DEFINED_FUNCTIONS" "no"
@@ -462,6 +471,10 @@ cassandra_setup_cluster() {
         cassandra_yaml_set "keystore_password" "$CASSANDRA_KEYSTORE_PASSWORD"
         cassandra_yaml_set "truststore" "$CASSANDRA_TRUSTSTORE_LOCATION"
         cassandra_yaml_set "truststore_password" "$CASSANDRA_TRUSTSTORE_PASSWORD"
+
+        if [[ -n "$CASSANDRA_BROADCAST_ADDRESS" ]]; then
+            cassandra_yaml_set "broadcast_address" "$CASSANDRA_BROADCAST_ADDRESS"
+        fi
 
         cassandra_config="$(sed -E "/client_encryption_options:.*/ {N; s/client_encryption_options:[^\n]*\n\s{4}enabled:.*/client_encryption_options:\n    enabled: $CASSANDRA_CLIENT_ENCRYPTION/g}" "$CASSANDRA_CONF_FILE")"
         echo "$cassandra_config" > "$CASSANDRA_CONF_FILE"
@@ -909,9 +922,16 @@ wait_for_cql_log_entry() {
 wait_for_cql_access() {
     local -r user="${1:-$CASSANDRA_USER}"
     local -r password="${2:-$CASSANDRA_PASSWORD}"
-    local -r host="${3:-$CASSANDRA_HOST}"
+    local host="${3:-$CASSANDRA_HOST}"
     local -r max_retries="${4:-$CASSANDRA_CQL_MAX_RETRIES}"
     local -r sleep_time="${5:-$CASSANDRA_CQL_SLEEP_TIME}"
+
+    debug "$host"
+    debug "$HOSTNAME"
+    if [[ $host == $HOSTNAME* ]]; then
+        info "set the host to 127.0.0.1 so that cqlsh can connect with itself."
+        host="127.0.0.1"
+    fi
 
     info "Trying to access CQL server @ $host"
     if (echo "DESCRIBE KEYSPACES" | cassandra_execute_with_retries "$max_retries" "$sleep_time" "$user" "$password" "" "$host" ); then
