@@ -102,12 +102,28 @@ get_total_memory() {
 # Globals:
 #   None
 # Arguments:
-#   $1 - memory size (optional)
+#   None
+# Flags:
+#   --memory - memory size (optional)
 # Returns:
 #   Detected instance size
 #########################
 get_machine_size() {
-    local memory="${1:-}"
+    local memory=""
+    # Validate arguments
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --memory)
+                shift
+                memory="${1:?missing memory}"
+                ;;
+            *)
+                echo "Invalid command line flag $1" >&2
+                return 1
+                ;;
+        esac
+        shift
+    done
     if [[ -z "$memory" ]]; then
         debug "Memory was not specified, detecting available memory automatically"
         memory="$(get_total_memory)"
@@ -152,10 +168,10 @@ get_supported_machine_sizes() {
 #########################
 convert_to_mb() {
     local amount="${1:-}"
-    if [[ $amount =~ ^([0-9]+)(M|G) ]]; then
+    if [[ $amount =~ ^([0-9]+)(m|M|g|G) ]]; then
         size="${BASH_REMATCH[1]}"
         unit="${BASH_REMATCH[2]}"
-        if [[ "$unit" = "G" ]]; then
+        if [[ "$unit" = "g" || "$unit" = "G" ]]; then
            amount="$((size * 1024))"
         else
             amount="$size"
@@ -192,9 +208,9 @@ debug_execute() {
 #   Boolean
 #########################
 retry_while() {
-    local -r cmd="${1:?cmd is missing}"
-    local -r retries="${2:-12}"
-    local -r sleep_time="${3:-5}"
+    local cmd="${1:?cmd is missing}"
+    local retries="${2:-12}"
+    local sleep_time="${3:-5}"
     local return_value=1
 
     read -r -a command <<< "$cmd"
@@ -203,4 +219,73 @@ retry_while() {
         sleep "$sleep_time"
     done
     return $return_value
+}
+
+########################
+# Generate a random string
+# Arguments:
+#   -t|--type - String type (ascii, alphanumeric, numeric), defaults to ascii
+#   -c|--count - Number of characters, defaults to 32
+# Arguments:
+#   None
+# Returns:
+#   None
+# Returns:
+#   String
+#########################
+generate_random_string() {
+    local type="ascii"
+    local count="32"
+    local filter
+    local result
+    # Validate arguments
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -t|--type)
+                shift
+                type="$1"
+                ;;
+            -c|--count)
+                shift
+                count="$1"
+                ;;
+            *)
+                echo "Invalid command line flag $1" >&2
+                return 1
+                ;;
+        esac
+        shift
+    done
+    # Validate type
+    case "$type" in
+        ascii)
+            filter="[:print:]"
+            ;;
+        alphanumeric)
+            filter="a-zA-Z0-9"
+            ;;
+        numeric)
+            filter="0-9"
+            ;;
+        *)
+        echo "Invalid type ${type}" >&2
+        return 1
+    esac
+    # Obtain count + 10 lines from /dev/urandom to ensure that the resulting string has the expected size
+    # Note there is a very small chance of strings starting with EOL character
+    # Therefore, the higher amount of lines read, this will happen less frequently
+    result="$(head -n "$((count + 10))" /dev/urandom | tr -dc "$filter" | head -c "$count")"
+    echo "$result"
+}
+
+########################
+# Create md5 hash from a string
+# Arguments:
+#   $1 - string
+# Returns:
+#   md5 hash - string
+#########################
+generate_md5_hash() {
+  local -r str="${1:?missing input string}"
+  echo -n "$str" | md5sum | awk '{print $1}'
 }

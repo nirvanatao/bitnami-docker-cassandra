@@ -21,6 +21,31 @@ dns_lookup() {
     getent ahosts "$host" | awk '/STREAM/ {print $1 }'
 }
 
+#########################
+# Wait for a hostname and return the IP
+# Arguments:
+#   $1 - hostname
+#   $2 - number of retries
+#   $3 - seconds to wait between retries
+# Returns:
+#   - IP address that corresponds to the hostname
+#########################
+wait_for_dns_lookup() {
+    local hostname="${1:?hostname is missing}"
+    local retries="${2:-5}"
+    local seconds="${3:-1}"
+    check_host() {
+        if [[ $(dns_lookup "$hostname") == "" ]]; then
+            false
+        else
+            true
+        fi
+    }
+    # Wait for the host to be ready
+    retry_while "check_host ${hostname}" "$retries" "$seconds"
+    dns_lookup "$hostname"
+}
+
 ########################
 # Get machine's IP
 # Arguments:
@@ -29,7 +54,17 @@ dns_lookup() {
 #   Machine IP
 #########################
 get_machine_ip() {
-    dns_lookup "$(hostname)"
+    local -a ip_addresses
+    local hostname
+    hostname="$(hostname)"
+    read -r -a ip_addresses <<< "$(dns_lookup "$hostname" | xargs echo)"
+    if [[ "${#ip_addresses[@]}" -gt 1 ]]; then
+        warn "Found more than one IP address associated to hostname ${hostname}: ${ip_addresses[*]}, will use ${ip_addresses[0]}"
+    elif [[ "${#ip_addresses[@]}" -lt 1 ]]; then
+        error "Could not find any IP address associated to hostname ${hostname}"
+        exit 1
+    fi
+    echo "${ip_addresses[0]}"
 }
 
 ########################
